@@ -1,6 +1,6 @@
 import type { AzdoClient, JsonPatchOp, WorkItem, WorkItemRelation } from "./azdo-client.js";
 import type { Config } from "./config.js";
-import { AzdoError } from "./errors.js";
+import { AzdoError, ToolInputError } from "./errors.js";
 import { readLocalFile } from "./fs-utils.js";
 
 export type ServiceConfig = Pick<Config, "defaultProject" | "downloadDir">;
@@ -39,7 +39,27 @@ export interface AddResult {
   attachment: { id: string; name: string; size: number; url: string; comment: string | null };
 }
 
+export interface AttachmentSelector {
+  /** Attachment GUID; any letter case. */
+  attachmentId?: string;
+  /** Exact server-side file name; only usable when unique on the work item. */
+  name?: string;
+}
+
+export interface DeleteArgs extends AttachmentSelector {
+  workItemId: number;
+}
+
+export interface DeleteResult {
+  workItemId: number;
+  workItemRev: number;
+  removed: { id: string; name: string; relationIndex: number };
+  note: string;
+}
+
 const ATTACHED_FILE = "AttachedFile";
+export const DELETE_NOTE =
+  "The attachment link was removed from the work item; Azure DevOps keeps the underlying file (no REST endpoint deletes attachment blobs).";
 
 function str(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
@@ -86,6 +106,53 @@ function attachmentsOf(workItem: WorkItem): AttachmentInfo[] {
   );
 }
 
+type ResolvedSelector = { attachmentId: string; name?: undefined } | { attachmentId?: undefined; name: string };
+
+/** Validates that exactly one of attachmentId / name was given. */
+function resolveSelector(args: AttachmentSelector): ResolvedSelector {
+  const attachmentId = trimmed(args.attachmentId);
+  const name = trimmed(args.name);
+  if (attachmentId && name) throw new ToolInputError("Pass either attachmentId or name to identify the attachment, not both.");
+  if (attachmentId) return { attachmentId: attachmentId.toLowerCase() };
+  if (name) return { name };
+  throw new ToolInputError("Pass attachmentId or name to identify the attachment.");
+}
+
+function describeAvailable(attachments: AttachmentInfo[]): string {
+  if (attachments.length === 0) return " The work item has no attachments.";
+  return ` Available: ${attachments.map((a) => `"${a.name}"`).join(", ")}.`;
+}
+
+function describeCandidate(a: AttachmentInfo): string {
+  const size = a.size === null ? "size unknown" : `${a.size} bytes`;
+  return `${a.id} (${size}, ${a.createdDate ?? "date unknown"})`;
+}
+
+/** Finds exactly one attachment; ambiguity is a caller error, absence is not_found. */
+function findAttachment(attachments: AttachmentInfo[], selector: ResolvedSelector, workItemId: number): AttachmentInfo {
+  if (selector.attachmentId !== undefined) {
+    const hit = attachments.find((a) => a.id === selector.attachmentId);
+    if (hit) return hit;
+    throw new AzdoError(
+      `No attachment with id ${selector.attachmentId} on work item ${workItemId}.${describeAvailable(attachments)}`,
+      "not_found",
+    );
+  }
+  const hits = attachments.filter((a) => a.name === selector.name);
+  if (hits.length === 1) return hits[0]!;
+  if (hits.length === 0) {
+    throw new AzdoError(
+      `No attachment named "${selector.name}" on work item ${workItemId}.${describeAvailable(attachments)}`,
+      "not_found",
+    );
+  }
+  throw new ToolInputError(
+    `${hits.length} attachments named "${selector.name}" on work item ${workItemId}; pass attachmentId instead: ${hits
+      .map(describeCandidate)
+      .join(", ")}.`,
+  );
+}
+
 /** Azure DevOps reports a failed `test /rev` either as 409/412 or as a 400 mentioning the revision. */
 function isRevConflict(err: unknown): err is AzdoError {
   if (!(err instanceof AzdoError)) return false;
@@ -128,6 +195,35 @@ export class AttachmentService {
       workItemId: updated.id,
       workItemRev: updated.rev,
       attachment: { id: ref.id.toLowerCase(), name: fileName, size: file.size, url: ref.url, comment: comment ?? null },
+    };
+  }
+
+  /**
+   * Removes the AttachedFile relation. Azure DevOps has no endpoint to delete the blob itself,
+   * so this is what the web UI's "delete attachment" does as well.
+   */
+  async deleteAttachment(args: DeleteArgs): Promise<DeleteResult> {
+    const selector = resolveSelector(args);
+    const workItem = await this.client.getWorkItem(args.workItemId);
+    let target = findAttachment(attachmentsOf(workItem), selector, args.workItemId);
+
+    const updated = await this.patchWithFreshRev(args.workItemId, workItem, (current) => {
+      const hit = attachmentsOf(current).find((a) => a.id === target.id);
+      if (!hit) {
+        throw new AzdoError(
+          `Attachment "${target.name}" (${target.id}) is no longer attached to work item ${args.workItemId}; it was probably removed concurrently.`,
+          "not_found",
+        );
+      }
+      target = hit;
+      return [{ op: "remove", path: `/relations/${hit.relationIndex}` }];
+    });
+
+    return {
+      workItemId: updated.id,
+      workItemRev: updated.rev,
+      removed: { id: target.id, name: target.name, relationIndex: target.relationIndex },
+      note: DELETE_NOTE,
     };
   }
 
