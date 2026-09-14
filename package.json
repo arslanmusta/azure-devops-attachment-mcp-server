@@ -1,0 +1,57 @@
+{
+  "name": "azure-devops-attachment-mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server (stdio) for listing, adding, deleting and downloading work item attachments on on-premise Azure DevOps Server via the REST API",
+  "type": "module",
+  "bin": {
+    "azure-devops-attachment-mcp-server": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "author": "Mustafa Arslan",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arslanmusta/azure-devops-attachment-mcp-server.git"
+  },
+  "homepage": "https://github.com/arslanmusta/azure-devops-attachment-mcp-server#readme",
+  "bugs": {
+    "url": "https://github.com/arslanmusta/azure-devops-attachment-mcp-server/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mcp-server",
+    "azure-devops",
+    "azure-devops-server",
+    "tfs",
+    "work-items",
+    "attachments"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.0"
+  }
+}
