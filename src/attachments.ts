@@ -1,7 +1,8 @@
+import path from "node:path";
 import type { AzdoClient, JsonPatchOp, WorkItem, WorkItemRelation } from "./azdo-client.js";
 import type { Config } from "./config.js";
 import { AzdoError, ToolInputError } from "./errors.js";
-import { readLocalFile } from "./fs-utils.js";
+import { readLocalFile, sanitizeFileName, saveStream } from "./fs-utils.js";
 
 export type ServiceConfig = Pick<Config, "defaultProject" | "downloadDir">;
 
@@ -57,6 +58,25 @@ export interface DeleteResult {
   note: string;
 }
 
+export interface DownloadArgs extends AttachmentSelector {
+  workItemId: number;
+  /** Local file name to save as; defaults to the server-side name. */
+  fileName?: string;
+  /** Directory to save into; defaults to the configured download directory. */
+  outputDir?: string;
+  project?: string;
+}
+
+export interface DownloadResult {
+  id: string;
+  /** Final local file name (may carry a " (n)" suffix). */
+  name: string;
+  /** Absolute path of the saved file. */
+  path: string;
+  size: number;
+  workItemId: number;
+}
+
 const ATTACHED_FILE = "AttachedFile";
 export const DELETE_NOTE =
   "The attachment link was removed from the work item; Azure DevOps keeps the underlying file (no REST endpoint deletes attachment blobs).";
@@ -91,7 +111,7 @@ function toAttachmentInfo(relation: WorkItemRelation, relationIndex: number): At
   const id = attachmentIdFromUrl(relation.url);
   return {
     id,
-    name: str(attrs.name) ?? id,
+    name: str(attrs.name) ?? `${id}.bin`,
     size: num(attrs.resourceSize),
     comment: str(attrs.comment),
     createdDate: str(attrs.resourceCreatedDate) ?? str(attrs.authorizedDate),
@@ -225,6 +245,22 @@ export class AttachmentService {
       removed: { id: target.id, name: target.name, relationIndex: target.relationIndex },
       note: DELETE_NOTE,
     };
+  }
+
+  /** Streams the attachment to disk without overwriting existing files. */
+  async downloadAttachment(args: DownloadArgs): Promise<DownloadResult> {
+    const selector = resolveSelector(args);
+    const workItem = await this.client.getWorkItem(args.workItemId);
+    const target = findAttachment(attachmentsOf(workItem), selector, args.workItemId);
+    const project = this.resolveProject(args.project, workItem);
+
+    const response = await this.client.downloadAttachment({ project, id: target.id, fileName: target.name });
+
+    const dir = args.outputDir ? path.resolve(args.outputDir) : this.config.downloadDir;
+    const localName = sanitizeFileName(trimmed(args.fileName) ?? target.name, `${target.id}.bin`);
+    const saved = await saveStream(dir, localName, response.body);
+
+    return { id: target.id, name: path.basename(saved.path), path: saved.path, size: saved.size, workItemId: workItem.id };
   }
 
   /** Explicit argument, then the work item's own project, then the configured default. */
