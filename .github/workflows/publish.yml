@@ -1,12 +1,15 @@
 name: Publish to npm
 
+# Publishes with npm Trusted Publishing (OIDC): no npm token is stored in GitHub.
+# npmjs.com -> package -> Settings -> Trusted Publisher -> GitHub Actions:
+#   owner: arslanmusta, repository: azure-devops-attachment-mcp-server, workflow: publish.yml
 on:
   push:
     tags: ["v*"]
 
 permissions:
   contents: read
-  id-token: write
+  id-token: write # lets the job request the OIDC token npm exchanges for a publish credential
 
 jobs:
   publish:
@@ -15,9 +18,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
+          node-version: 24
           cache: npm
+      # Trusted publishing needs npm >= 11.5.1; Node 24 ships npm 11 but pin to the latest to be safe.
+      - run: npm install -g npm@latest
+      - run: npm --version
       - name: Tag must match package.json version
         run: |
           version=$(node -p "require('./package.json').version")
@@ -29,6 +34,5 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # Provenance attestations are generated automatically when publishing through OIDC.
+      - run: npm publish --access public
