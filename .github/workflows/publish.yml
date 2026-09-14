@@ -15,11 +15,11 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: npm
+          package-manager-cache: false # never reuse caches in release builds
       # Trusted publishing needs npm >= 11.5.1; Node 24 ships npm 11 but pin to the latest to be safe.
       - run: npm install -g npm@latest
       - run: npm --version
