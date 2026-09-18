@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/arslanmusta/azure-devops-attachment-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/arslanmusta/azure-devops-attachment-mcp-server/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/azure-devops-attachment-mcp-server)](https://www.npmjs.com/package/azure-devops-attachment-mcp-server)
+[![M8ven Score](https://m8ven.ai/badge/mcp/arslanmusta-azure-devops-attachment-mcp-server-1da935)](https://m8ven.ai/mcp/arslanmusta-azure-devops-attachment-mcp-server-1da935)
 
 An [MCP](https://modelcontextprotocol.io) server (stdio) that lets AI assistants manage **work item
 attachments** on **on-premise Azure DevOps Server** (2019 / 2020 / 2022, formerly TFS) through the REST
