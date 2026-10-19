@@ -2,7 +2,9 @@ name: Publish to npm
 
 # Publishes with npm Trusted Publishing (OIDC): no npm token is stored in GitHub.
 # npmjs.com -> package -> Settings -> Trusted Publisher -> GitHub Actions:
-#   owner: arslanmusta, repository: azure-devops-attachment-mcp-server, workflow: publish.yml
+#   owner: arslanmusta, repository: azure-devops-attachment-mcp-server, workflow: publish.yml, environment: (empty)
+#   Allowed actions: tick "npm publish" — only "npm stage publish" is allowed by default, and
+#   without it the registry answers "403 OIDC permission denied for this action".
 on:
   push:
     tags: ["v*"]
